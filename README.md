@@ -1,118 +1,104 @@
 # Wealth Advisor Copilot
 
-Enterprise-grade RAG (Retrieval Augmented Generation) system for wealth advisors with multi-tenant security, audit logging, and compliance guardrails.
+A chat assistant that helps wealth advisors quickly find information in SEC filings and financial documents. Upload a 10-K, ask a question, get an answer with citations.
 
-## Features
+## What It Does
 
-- 🔍 **Intelligent RAG Pipeline** - Vector search with pgvector + Cohere reranking
-- 📄 **Multi-format Ingestion** - PDF, HTML, text, and SEC EDGAR filings
-- 🏢 **Multi-tenant Security** - Complete tenant and client isolation
-- 📊 **Audit Logging** - Every query, retrieval, and response tracked
-- 🛡️ **Compliance Guardrails** - No financial advice, PII redaction
-- 📈 **Evaluation Harness** - Built-in quality metrics and testing
-- 💬 **LangGraph Workflows** - Structured multi-step processing
+**The problem:** Wealth advisors spend hours digging through lengthy SEC filings and financial documents to answer client questions.
 
-## Quick Start
+**The solution:** Upload documents (or pull them directly from SEC EDGAR), then ask questions in plain English. The system finds the relevant sections and gives you a sourced answer.
 
-### Prerequisites
+### Key Features
 
-- Docker & Docker Compose
-- OpenAI API key
-- (Optional) Cohere API key for reranking
+- **Import SEC filings** — Pull 10-Ks, 10-Qs, and other filings directly from EDGAR by ticker or CIK
+- **Upload your own docs** — PDFs, text files, HTML
+- **Ask questions naturally** — "What are Apple's main risk factors?" or "How much cash does the company have?"
+- **Get cited answers** — Every response includes references to the source documents
+- **Multi-tenant** — Each organization's data stays separate
 
-### 1. Clone and Configure
+## Getting Started
+
+You'll need:
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running
+- An OpenAI API key ([get one here](https://platform.openai.com/api-keys))
+- (Optional) A Cohere API key for better search ranking
+
+### Setup
 
 ```bash
+# 1. Clone the repo
+git clone https://github.com/your-org/wealth-advisor-copilot.git
 cd wealth-advisor-copilot
 
-# Copy environment template
+# 2. Create your environment file
 cp .env.example .env
 
-# Edit .env and add your OpenAI API key
-```
+# 3. Add your OpenAI key to .env
+# Open .env in any editor and set OPENAI_API_KEY=sk-...
 
-### 2. Start Services
-
-```bash
-# Start all services (database, backend, frontend)
+# 4. Start everything
 docker compose up -d
-
-# For development with hot reload:
-docker compose --profile dev up -d
 ```
 
-### 3. Access the Application
+That's it! Give it a minute to start up, then open:
+- **App:** http://localhost:3000
+- **API Docs:** http://localhost:8000/docs
 
-- **Frontend**: http://localhost:5173 (dev) or http://localhost:3000 (production)
-- **API Docs**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/health
+### Try It Out
 
-### 4. Create an Account
+1. Open the app and go to the **Documents** tab
+2. Import a filing — try Apple's 10-K (CIK: `320193`)
+3. Switch to **Chat** and ask: *"What are the main risk factors?"*
+4. You'll get an answer with citations pointing to the exact sections
 
-1. Open the frontend
-2. Click "Register"
-3. Create an account with your organization name
-
-### 5. Ingest Documents
-
-Via the UI:
-- Upload PDFs or text files
-- Import SEC EDGAR filings by CIK number
-
-Via API:
-```bash
-# Upload a document
-curl -X POST "http://localhost:8000/api/v1/documents/upload" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -F "file=@document.pdf"
-
-# Import EDGAR filing (Apple 10-K)
-curl -X POST "http://localhost:8000/api/v1/documents/edgar" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"cik": "320193", "filing_type": "10-K"}'
-```
-
-## Project Structure
+## How It Works
 
 ```
-wealth-advisor-copilot/
-├── backend/
-│   ├── app/
-│   │   ├── routers/         # FastAPI endpoints
-│   │   ├── rag/             # RAG pipeline
-│   │   ├── graphs/          # LangGraph workflows
-│   │   ├── db/              # Database models
-│   │   └── eval/            # Evaluation harness
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── src/components/      # React components
-│   ├── package.json
-│   └── Dockerfile
-├── docs/
-│   ├── ARCHITECTURE.md      # System design
-│   └── THREAT_MODEL.md      # Security analysis
-├── docker-compose.yml
-└── .env.example
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Upload    │ ──▶ │   Chunk &   │ ──▶ │   Store in  │
+│  Document   │     │   Embed     │     │   Postgres  │
+└─────────────┘     └─────────────┘     └─────────────┘
+                                              │
+┌─────────────┐     ┌─────────────┐           ▼
+│   Return    │ ◀── │  Generate   │ ◀── ┌─────────────┐
+│   Answer    │     │   Answer    │     │   Search    │
+└─────────────┘     └─────────────┘     │   + Rank    │
+                                        └─────────────┘
+```
+
+1. **Documents are chunked** into smaller pieces and converted to embeddings
+2. **Questions trigger a search** across all your documents using vector similarity
+3. **Top results are re-ranked** (with Cohere) for relevance
+4. **GPT-4o generates an answer** using only the retrieved context
+
+## Project Layout
+
+```
+backend/
+  app/
+    routers/     → API endpoints (chat, documents, admin)
+    rag/         → Document processing & retrieval
+    graphs/      → LangGraph workflow for Q&A
+    db/          → Database models (Postgres + pgvector)
+
+frontend/
+  src/
+    components/  → React UI (Chat, Documents, Admin tabs)
 ```
 
 ## Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| Backend | FastAPI (Python 3.11) |
-| Orchestration | LangGraph |
-| LLM | OpenAI GPT-4o |
-| Embeddings | OpenAI text-embedding-3-small |
-| Vector Store | PostgreSQL + pgvector |
-| Reranking | Cohere Rerank v3 |
-| Frontend | React + TailwindCSS |
+- **Backend:** FastAPI + LangGraph
+- **LLM:** OpenAI GPT-4o
+- **Embeddings:** OpenAI text-embedding-3-small
+- **Vector DB:** PostgreSQL with pgvector (HNSW index)
+- **Reranking:** Cohere Rerank v3
+- **Frontend:** React + Vite + TailwindCSS
 
-## Documentation
+## Learn More
 
-- [Architecture](docs/ARCHITECTURE.md) - System design and data flow
-- [Threat Model](docs/THREAT_MODEL.md) - Security analysis
+- [Architecture](docs/ARCHITECTURE.md) — How the system is designed
+- [Threat Model](docs/THREAT_MODEL.md) — Security considerations
 
 ## License
 
