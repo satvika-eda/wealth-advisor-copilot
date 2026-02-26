@@ -1,0 +1,44 @@
+# FastAPI and server
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# Database
+sqlalchemy==2.0.35
+asyncpg==0.29.0
+psycopg2-binary==2.9.9
+pgvector==0.3.4
+alembic==1.13.3
+
+# LangChain and LangGraph
+langchain==0.3.2
+langchain-openai==0.2.1
+langchain-community==0.3.1
+langgraph==0.2.28
+
+# OpenAI
+openai==1.51.0
+
+# Cohere (optional reranking)
+cohere==5.11.0
+
+# Document parsing
+unstructured==0.15.13
+pdfplumber==0.11.4
+beautifulsoup4==4.12.3
+trafilatura==1.12.2
+lxml==5.3.0
+
+# File uploads
+python-multipart==0.0.12
+
+# Utilities
+httpx==0.27.2
+numpy==1.26.4
+tiktoken==0.8.0
+tenacity==8.3.0
+
+# Testing
+pytest==8.3.3
+pytest-asyncio==0.24.0

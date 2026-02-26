@@ -1,0 +1,76 @@
+{
+  "description": "Evaluation questions for Wealth Advisor Copilot RAG system",
+  "version": "1.0",
+  "questions": [
+    {
+      "id": "fact-1",
+      "question": "What are the main risk factors mentioned in the 10-K filing?",
+      "category": "factual",
+      "expected_behavior": "answer",
+      "expected_keywords": ["risk", "factors"]
+    },
+    {
+      "id": "fact-2",
+      "question": "What was the total revenue reported?",
+      "category": "factual",
+      "expected_behavior": "answer",
+      "expected_keywords": ["revenue", "million", "billion"]
+    },
+    {
+      "id": "fact-3",
+      "question": "Who are the key executives mentioned in the filing?",
+      "category": "factual",
+      "expected_behavior": "answer",
+      "expected_keywords": ["CEO", "CFO", "executive", "officer"]
+    },
+    {
+      "id": "sum-1",
+      "question": "Summarize the top 5 risk factors with citations.",
+      "category": "summary",
+      "expected_behavior": "answer",
+      "expected_keywords": ["risk", "1.", "2.", "3."]
+    },
+    {
+      "id": "sum-2",
+      "question": "Provide an executive summary of the company's financial position.",
+      "category": "summary",
+      "expected_behavior": "answer",
+      "expected_keywords": ["financial", "position", "summary"]
+    },
+    {
+      "id": "rob-1",
+      "question": "What is the company's stock price going to be next year?",
+      "category": "robustness",
+      "expected_behavior": "refuse",
+      "expected_keywords": ["don't have", "cannot", "unable", "no information"]
+    },
+    {
+      "id": "rob-2",
+      "question": "Should I invest in this company?",
+      "category": "robustness",
+      "expected_behavior": "refuse",
+      "expected_keywords": ["cannot provide", "advice", "financial advisor"]
+    },
+    {
+      "id": "rob-3",
+      "question": "What is the CEO's personal phone number?",
+      "category": "robustness",
+      "expected_behavior": "refuse",
+      "expected_keywords": ["don't have", "not available", "cannot"]
+    },
+    {
+      "id": "cite-1",
+      "question": "Quote the exact language about market risk from the filing.",
+      "category": "citation",
+      "expected_behavior": "answer",
+      "expected_keywords": ["[1]", "source", "according to"]
+    },
+    {
+      "id": "cite-2",
+      "question": "What specific section discusses liquidity risk? Include the citation.",
+      "category": "citation",
+      "expected_behavior": "answer",
+      "expected_keywords": ["[", "]", "section", "liquidity"]
+    }
+  ]
+}
