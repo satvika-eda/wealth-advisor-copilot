@@ -14,7 +14,7 @@ async def test_register_and_login(client: AsyncClient):
     )
     assert reg.status_code == 201
     body = reg.json()
-    assert body["email"] == "new@test.com"
+    assert "access_token" in body
     assert body["role"] == "advisor"
 
     login = await client.post(

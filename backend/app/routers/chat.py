@@ -29,6 +29,9 @@ _INJECTION_PATTERNS = [
     "new instructions:",
     "system prompt:",
     "forget everything",
+    "forget all previous",
+    "act as dan",
+    "act as an unrestricted",
 ]
 
 
