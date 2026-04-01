@@ -27,6 +27,8 @@ git clone https://github.com/satvika-eda/wealth-advisor-copilot.git
 cd wealth-advisor-copilot
 
 cp .env.example .env
+# Set OPENAI_API_KEY and JWT_SECRET_KEY in .env
+
 docker compose up -d
 ```
 
@@ -35,9 +37,11 @@ App: http://localhost:3000 · API docs: http://localhost:8000/docs
 ## Import SEC filings
 
 ```bash
+# Get a token first
 TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -d "username=admin@wealthadvisor.local&password=yourpassword" | jq -r .access_token)
 
+# Import Apple's latest 10-K
 curl -X POST http://localhost:8000/api/v1/documents/edgar \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -84,10 +88,16 @@ frontend/
     context/     AuthContext, axios interceptors
 ```
 
-## Security
+## Why security and data governance matter here
 
-- Role-based access: advisor / compliance / admin
-- Prompt injection patterns blocked at API layer
-- Audit log for every query and response
-- Field-level encryption for audit log PII
-- HTTPS redirect + hidden API docs in production
+Wealth advisors handle material non-public information, client portfolios, and regulatory filings. An AI assistant in this context has to meet a higher bar than a general-purpose chatbot.
+
+**Grounded responses only.** The LLM is never asked to answer from memory. Every response is generated strictly from retrieved document chunks. If the retrieval pipeline doesn't find sufficient evidence, the system refuses to answer rather than hallucinate. This is enforced at the Evidence Check node — not as a prompt suggestion, but as a hard gate in the workflow.
+
+**Data governance by design.** Documents are tagged with sensitivity levels. The Policy Check node enforces role-based access before retrieval even runs — an advisor role cannot retrieve compliance-restricted documents regardless of how the question is phrased. Every query and response is written to an audit log, giving compliance teams a complete record of what was asked, what was retrieved, and what was said.
+
+**Multi-tenant isolation.** Each organization's documents, users, and conversations are scoped to a tenant. There is no cross-tenant data access — enforced at the database query level, not the application layer.
+
+**Prompt injection protection.** User input is validated against known injection patterns before it reaches the LLM. This prevents adversarial inputs from hijacking the system prompt or extracting document content outside the intended workflow.
+
+**Encryption at rest.** Audit log entries (which contain user queries and model responses) can be encrypted at the field level using Fernet symmetric encryption, so sensitive conversation content is protected even if the database is compromised.
