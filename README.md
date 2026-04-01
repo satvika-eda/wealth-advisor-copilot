@@ -2,7 +2,7 @@
 
 A RAG-powered assistant that lets wealth advisors query SEC filings in plain English and get cited, sourced answers.
 
-![Architecture](docs/architecture.png)
+![Architecture](docs/arch.jpeg)
 
 ## What it does
 
