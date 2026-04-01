@@ -27,8 +27,6 @@ git clone https://github.com/satvika-eda/wealth-advisor-copilot.git
 cd wealth-advisor-copilot
 
 cp .env.example .env
-# Set OPENAI_API_KEY and JWT_SECRET_KEY in .env
-
 docker compose up -d
 ```
 
@@ -37,11 +35,9 @@ App: http://localhost:3000 · API docs: http://localhost:8000/docs
 ## Import SEC filings
 
 ```bash
-# Get a token first
 TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
   -d "username=admin@wealthadvisor.local&password=yourpassword" | jq -r .access_token)
 
-# Import Apple's latest 10-K
 curl -X POST http://localhost:8000/api/v1/documents/edgar \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -51,12 +47,11 @@ curl -X POST http://localhost:8000/api/v1/documents/edgar \
 ## Running tests
 
 ```bash
-# Create test database (one-time)
 psql -U postgres -c "CREATE DATABASE wealth_advisor_test;"
 psql -U postgres -d wealth_advisor_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
 cd backend
-python -m pytest tests/ -v   # 26 tests
+python -m pytest tests/ -v
 ```
 
 ## Azure OpenAI
