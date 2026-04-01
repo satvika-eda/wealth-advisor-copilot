@@ -1,17 +1,27 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Upload, FileText, Trash2, RefreshCw, Building2, Plus, X, Globe } from 'lucide-react';
+import { Upload, FileText, Trash2, RefreshCw, Building2, X, Globe, CheckCircle, Clock } from 'lucide-react';
 import { documentsApi } from '../api';
+import { useAuth } from '../context/AuthContext';
 import { format } from 'date-fns';
+
+const ADMIN_ROLES = new Set(['admin', 'compliance']);
 
 export default function Documents() {
   const [showUpload, setShowUpload] = useState(false);
   const [showEdgar, setShowEdgar] = useState(false);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const canApprove = ADMIN_ROLES.has(user?.role);
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ['documents'],
     queryFn: () => documentsApi.list(),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: documentsApi.approve,
+    onSuccess: () => queryClient.invalidateQueries(['documents']),
   });
 
   const deleteMutation = useMutation({
@@ -117,16 +127,40 @@ export default function Documents() {
                       </a>
                     )}
                   </div>
-                  <button
-                    onClick={() => {
-                      if (confirm('Delete this document and all its chunks?')) {
-                        deleteMutation.mutate(doc.id);
-                      }
-                    }}
-                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1 ml-2 shrink-0">
+                    {doc.is_approved ? (
+                      <span className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-lg">
+                        <CheckCircle className="w-3 h-3" />
+                        Approved
+                      </span>
+                    ) : (
+                      <>
+                        <span className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 rounded-lg">
+                          <Clock className="w-3 h-3" />
+                          Pending
+                        </span>
+                        {canApprove && doc.ingestion_status === 'completed' && (
+                          <button
+                            onClick={() => approveMutation.mutate(doc.id)}
+                            disabled={approveMutation.isPending}
+                            className="px-3 py-1 text-xs font-medium text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 rounded-lg transition-colors"
+                          >
+                            Approve
+                          </button>
+                        )}
+                      </>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (confirm('Delete this document and all its chunks?')) {
+                          deleteMutation.mutate(doc.id);
+                        }
+                      }}
+                      className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}

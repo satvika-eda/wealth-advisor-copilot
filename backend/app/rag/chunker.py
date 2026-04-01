@@ -92,16 +92,13 @@ class Chunker:
             if not content or not content.strip():
                 continue
             
-            # Update heading path based on level
             if level <= len(heading_path):
                 heading_path = heading_path[:level-1]
             heading_path.append(heading)
             
-            # Check if section needs splitting
             section_tokens = self.count_tokens(content)
             
             if section_tokens <= self.chunk_size:
-                # Section fits in one chunk
                 chunks.append(Chunk(
                     content=content.strip(),
                     chunk_index=chunk_index,
@@ -116,7 +113,6 @@ class Chunker:
                 ))
                 chunk_index += 1
             else:
-                # Split large section
                 sub_chunks = self._split_large_section(content, heading_path, page, doc_metadata)
                 for sub_chunk in sub_chunks:
                     sub_chunk.chunk_index = chunk_index
@@ -135,7 +131,6 @@ class Chunker:
         """Split a large section into smaller chunks with overlap."""
         chunks = []
         
-        # Split by paragraphs first
         paragraphs = re.split(r'\n\s*\n', content)
         
         current_chunk = []
@@ -152,7 +147,6 @@ class Chunker:
                 current_chunk.append(para)
                 current_tokens += para_tokens
             else:
-                # Save current chunk
                 if current_chunk:
                     chunk_text = "\n\n".join(current_chunk)
                     chunks.append(Chunk(
@@ -169,11 +163,9 @@ class Chunker:
                         }
                     ))
                 
-                # Start new chunk with overlap
                 overlap_tokens = 0
                 overlap_paras = []
                 
-                # Add paragraphs from end of current chunk for overlap
                 for p in reversed(current_chunk):
                     p_tokens = self.count_tokens(p)
                     if overlap_tokens + p_tokens <= self.chunk_overlap:
@@ -185,7 +177,6 @@ class Chunker:
                 current_chunk = overlap_paras + [para]
                 current_tokens = overlap_tokens + para_tokens
         
-        # Add final chunk
         if current_chunk:
             chunk_text = "\n\n".join(current_chunk)
             chunks.append(Chunk(
@@ -212,7 +203,6 @@ class Chunker:
         """Simple fixed-size chunking with overlap."""
         chunks = []
         
-        # Tokenize content
         tokens = self.tokenizer.encode(content)
         
         start = 0
@@ -235,7 +225,6 @@ class Chunker:
                 }
             ))
             
-            # Move start with overlap
             start = end - self.chunk_overlap if end < len(tokens) else end
             chunk_index += 1
         
@@ -246,7 +235,6 @@ class Chunker:
         parts = []
         
         if heading_path:
-            # Clean headings for anchor
             clean_path = [re.sub(r'[^\w\s-]', '', h).strip().replace(' ', '-').lower() 
                          for h in heading_path]
             parts.append('/'.join(clean_path))

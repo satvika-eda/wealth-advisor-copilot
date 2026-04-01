@@ -25,7 +25,6 @@ class ParsedDocument:
 class DocumentParser:
     """Multi-format document parser."""
     
-    # PII patterns for redaction
     PII_PATTERNS = {
         "email": r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',
         "phone": r'\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b',
@@ -88,23 +87,19 @@ class DocumentParser:
         """Parse HTML content using BeautifulSoup."""
         soup = BeautifulSoup(html_content, 'lxml')
         
-        # Remove script and style elements
         for element in soup(['script', 'style', 'nav', 'footer', 'header']):
             element.decompose()
         
-        # Extract title
         doc_title = title
         if not doc_title:
             title_tag = soup.find('title')
             doc_title = title_tag.get_text().strip() if title_tag else "Untitled HTML"
         
-        # Extract sections by headings
         sections = []
         current_section = {"heading": "Introduction", "content": [], "level": 0}
         
         for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'p', 'div', 'li']):
             if element.name in ['h1', 'h2', 'h3', 'h4']:
-                # Save previous section
                 if current_section["content"]:
                     current_section["content"] = " ".join(current_section["content"])
                     sections.append(current_section)
@@ -120,12 +115,10 @@ class DocumentParser:
                 if text and len(text) > 20:  # Skip very short fragments
                     current_section["content"].append(text)
         
-        # Add last section
         if current_section["content"]:
             current_section["content"] = " ".join(current_section["content"])
             sections.append(current_section)
         
-        # Build full content
         full_text = soup.get_text(separator=' ', strip=True)
         if self.redact_pii:
             full_text, _ = self.redact_pii_content(full_text)
@@ -141,99 +134,95 @@ class DocumentParser:
         )
     
     async def parse_edgar_filing(
-        self, 
-        cik: str, 
+        self,
+        cik: str,
         filing_type: str = "10-K",
-        accession_number: Optional[str] = None
+        accession_number: Optional[str] = None,
     ) -> ParsedDocument:
         """
-        Parse SEC EDGAR filing.
-        
-        Args:
-            cik: Company CIK number
-            filing_type: Filing type (10-K, 10-Q, 8-K)
-            accession_number: Specific filing accession number (optional)
+        Parse SEC EDGAR filing by fetching the primary document HTML.
+
+        Uses the submissions JSON to find the most recent filing of the requested
+        type and its primary document filename, then fetches the actual HTML filing
+        (not just the index cover page).
         """
-        # SEC EDGAR API endpoint - SEC requires User-Agent with company name and email
         base_url = "https://www.sec.gov"
         headers = {
             "User-Agent": "WealthAdvisorCopilot admin@wealthadvisor.local",
             "Accept-Encoding": "gzip, deflate",
         }
-        
-        # Normalize CIK to 10 digits (remove leading zeros then repad)
-        cik_normalized = str(int(cik)).zfill(10)
-        company_name = "Unknown Company"
-        
-        async with httpx.AsyncClient(timeout=30) as client:
-            # Get company filings using the newer JSON API
-            # Use SEC's submissions JSON endpoint
+
+        cik_int = int(cik)
+        cik_normalized = str(cik_int).zfill(10)
+
+        async with httpx.AsyncClient(timeout=60) as client:
             submissions_url = f"https://data.sec.gov/submissions/CIK{cik_normalized}.json"
-            response = await client.get(submissions_url, headers=headers)
-            
-            if response.status_code != 200:
-                raise ValueError(f"Failed to fetch filings for CIK {cik}: {response.status_code}")
-            
-            data = response.json()
-            
-            # Extract company name from the JSON response
+            resp = await client.get(submissions_url, headers=headers)
+            if resp.status_code != 200:
+                raise ValueError(f"Failed to fetch filings for CIK {cik}: {resp.status_code}")
+
+            data = resp.json()
             company_name = data.get("name", "Unknown Company")
-            
+            filings = data.get("filings", {}).get("recent", {})
+
+            forms = filings.get("form", [])
+            accession_numbers = filings.get("accessionNumber", [])
+            primary_documents = filings.get("primaryDocument", [])
+
+            primary_doc = None
             if not accession_number:
-                filings = data.get("filings", {}).get("recent", {})
-                
-                # Find the most recent filing of the requested type
-                forms = filings.get("form", [])
-                accession_numbers = filings.get("accessionNumber", [])
-                
                 for i, form in enumerate(forms):
                     if form == filing_type:
                         accession_number = accession_numbers[i]
+                        primary_doc = primary_documents[i] if i < len(primary_documents) else None
                         break
-                
                 if not accession_number:
                     raise ValueError(f"No {filing_type} filings found for CIK {cik}")
-            
-            # Get the actual filing document
-            # EDGAR filing document URL pattern
-            accession_clean = accession_number.replace('-', '')
-            
-            # Try to get the primary document (usually HTML)
-            filing_index_url = f"https://data.sec.gov/submissions/CIK{cik_normalized}.json"
-            
-            # Fetch filing index to find primary document
-            index_url = f"{base_url}/Archives/edgar/data/{int(cik)}/{accession_clean}/{accession_number}-index.json"
-            index_response = await client.get(index_url, headers=headers)
-            
-            primary_doc = f"{accession_number}.txt"
-            if index_response.status_code == 200:
-                index_data = index_response.json()
-                # Look for the main filing document
-                for item in index_data.get("directory", {}).get("item", []):
-                    name = item.get("name", "")
-                    if name.endswith(".htm") and filing_type.lower() in name.lower():
-                        primary_doc = name
+            else:
+                # Caller provided accession number — find its primary document
+                for i, acc in enumerate(accession_numbers):
+                    if acc == accession_number:
+                        primary_doc = primary_documents[i] if i < len(primary_documents) else None
                         break
-            
-            filing_url = f"{base_url}/Archives/edgar/data/{int(cik)}/{accession_clean}/{primary_doc}"
-            
+
+            accession_clean = accession_number.replace('-', '')
+
+            # Build filing URL from primary document
+            if primary_doc and primary_doc.endswith('.htm'):
+                filing_url = f"{base_url}/Archives/edgar/data/{cik_int}/{accession_clean}/{primary_doc}"
+            else:
+                # Fall back to index JSON to find the primary .htm
+                index_url = f"{base_url}/Archives/edgar/data/{cik_int}/{accession_clean}/{accession_number}-index.json"
+                idx_resp = await client.get(index_url, headers=headers)
+                filing_url = f"{base_url}/Archives/edgar/data/{cik_int}/{accession_clean}/{accession_number}.txt"
+                if idx_resp.status_code == 200:
+                    for item in idx_resp.json().get("directory", {}).get("item", []):
+                        name = item.get("name", "")
+                        item_type = item.get("type", "")
+                        if item_type == filing_type and name.endswith(".htm"):
+                            filing_url = f"{base_url}/Archives/edgar/data/{cik_int}/{accession_clean}/{name}"
+                            break
+
             response = await client.get(filing_url, headers=headers)
             if response.status_code != 200:
-                # Fallback to txt file
-                filing_url = f"{base_url}/Archives/edgar/data/{int(cik)}/{accession_clean}/{accession_number}.txt"
-                response = await client.get(filing_url, headers=headers)
-            
+                raise ValueError(f"Failed to fetch filing document: {filing_url} ({response.status_code})")
+
             content = response.text
-        
-        # Parse the EDGAR HTML
-        sections = self._parse_edgar_sections(content)
-        
-        # Extract text content
+
         soup = BeautifulSoup(content, 'lxml')
-        text_content = trafilatura.extract(content) or soup.get_text(separator=' ', strip=True)
+        for tag in soup(['script', 'style', 'ix:header', 'ix:hidden']):
+            tag.decompose()
+
+        # Prefer trafilatura; fall back to full BS4 extraction (EDGAR iXBRL is trafilatura-hostile)
+        text_content = trafilatura.extract(content, include_tables=True)
+        if not text_content or len(text_content) < 5000:
+            text_content = soup.get_text(separator='\n', strip=True)
+
         if self.redact_pii:
             text_content, _ = self.redact_pii_content(text_content)
-        
+
+        sections = self._parse_edgar_sections_from_text(text_content)
+
         return ParsedDocument(
             content=text_content,
             title=f"{company_name} {filing_type}",
@@ -249,6 +238,31 @@ class DocumentParser:
             sections=sections,
         )
     
+    def _parse_edgar_sections_from_text(self, text: str) -> List[Dict[str, Any]]:
+        """
+        Split plain-text EDGAR filing into sections by Item headings.
+        Falls back to a single large section so fixed-size chunking still runs.
+        """
+        item_pattern = re.compile(
+            r'(?:^|\n)((?:PART\s+[IVX]+|Item\s+\d+[A-Z]?)[.\s][^\n]{0,80})',
+            re.IGNORECASE,
+        )
+        matches = list(item_pattern.finditer(text))
+
+        if len(matches) < 2:
+            return [{"heading": "Filing Content", "content": text, "level": 1}]
+
+        sections = []
+        for i, match in enumerate(matches):
+            heading = match.group(1).strip()
+            start = match.end()
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+            section_text = text[start:end].strip()
+            if section_text:
+                sections.append({"heading": heading, "content": section_text, "level": 2})
+
+        return sections
+
     def _parse_edgar_sections(self, html_content: str) -> List[Dict[str, Any]]:
         """Parse EDGAR-specific sections (Item 1A, Item 7, etc.)."""
         sections = []
@@ -308,7 +322,6 @@ class DocumentParser:
             response = await client.get(url)
             html_content = response.text
         
-        # Use trafilatura for main content extraction
         extracted = trafilatura.extract(
             html_content,
             include_tables=True,
@@ -316,13 +329,11 @@ class DocumentParser:
         )
         
         if not extracted:
-            # Fallback to basic HTML parsing
             return self.parse_html(html_content, url=url)
         
         if self.redact_pii:
             extracted, _ = self.redact_pii_content(extracted)
         
-        # Extract title
         soup = BeautifulSoup(html_content, 'lxml')
         title_tag = soup.find('title')
         title = title_tag.get_text().strip() if title_tag else url

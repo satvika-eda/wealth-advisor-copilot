@@ -21,37 +21,35 @@ class GraphState(BaseModel):
     IntentRouter → RetrieveEvidence → CheckEvidence → GenerateResponse → CitationFormatter → AuditLogger
     """
     
-    # Input context (set at start)
     tenant_id: str
     client_id: Optional[str] = None
     user_id: str
+    user_role: str = "advisor"
     conversation_id: str
     user_query: str
     
-    # Workflow routing
     intent: Literal["qa", "summary", "risk", "email", "unknown"] = "unknown"
     
-    # Document filters
     doc_types: Optional[List[str]] = None
     company_filter: Optional[str] = None
     
-    # Retrieval results
     retrieved_chunks: List[Dict[str, Any]] = []
     retrieval_scores: Dict[str, Dict[str, float]] = {}
     
-    # Evidence assessment
     has_sufficient_evidence: bool = False
     evidence_quality: Dict[str, Any] = {}
     
-    # Generation
     draft_response: str = ""
     final_response: str = ""
     citations: List[Citation] = []
     
-    # Compliance flags
     flags: Dict[str, Any] = {}
+
+    # Human-readable explanation of why the system refused to answer (if applicable).
+    # Populated by build_refusal(); surfaced in the API response so UIs can display
+    # a plain-language explanation rather than a raw flag dict.
+    refusal_reason: Optional[str] = None
     
-    # Audit
     model_name: str = ""
     latency_ms: int = 0
     error: Optional[str] = None

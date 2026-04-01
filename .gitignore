@@ -3,6 +3,32 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+# Frontend build output
+frontend/dist/
+frontend/.vite/
+
+# Logs
+*.log
+/tmp/
+
+# Test & coverage output
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# macOS
+.DS_Store
+**/.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Uploaded files / local data
+backend/uploads/
+backend/data/
+
 .venv/
 .env 
 

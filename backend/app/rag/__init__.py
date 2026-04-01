@@ -1,4 +1,3 @@
-# RAG Pipeline
 from app.rag.chunker import Chunker, ChunkingStrategy
 from app.rag.embedder import Embedder
 from app.rag.retriever import Retriever

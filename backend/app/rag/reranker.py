@@ -5,8 +5,10 @@ from dataclasses import dataclass
 
 from app.rag.retriever import RetrievedChunk
 from app.config import get_settings
+from app.logging_config import get_logger
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -30,7 +32,6 @@ class Reranker:
         self.top_k = top_k
         self.cohere_client = None
         
-        # Initialize Cohere if API key available
         if settings.COHERE_API_KEY:
             try:
                 import cohere
@@ -63,7 +64,6 @@ class Reranker:
         if self.cohere_client:
             return await self._cohere_rerank(query, chunks, k)
         else:
-            # Fallback: return top chunks by original score
             return self._fallback_rerank(chunks, k)
     
     async def _cohere_rerank(
@@ -93,10 +93,9 @@ class Reranker:
                 ))
             
             return results
-        
-        except Exception as e:
-            # Fallback on error
-            print(f"Cohere rerank error: {e}")
+
+        except Exception:
+            logger.warning("Cohere rerank failed, using fallback", exc_info=True)
             return self._fallback_rerank(chunks, top_k)
     
     def _fallback_rerank(
@@ -134,10 +133,9 @@ class Reranker:
         avg_score = sum(r.rerank_score for r in results) / len(results)
         top_score = results[0].rerank_score if results else 0
         
-        # Determine confidence based on evidence
-        if len(results) >= 5 and avg_score >= 0.7:
+        if len(results) >= 3 and avg_score >= 0.7:
             confidence = "high"
-        elif len(results) >= 3 and avg_score >= 0.5:
+        elif len(results) >= 1 and avg_score >= 0.4:
             confidence = "medium"
         else:
             confidence = "low"

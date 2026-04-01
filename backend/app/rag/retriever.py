@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.constants import ROLE_SENSITIVITY_ACCESS
 from app.db.models import Chunk, Document
 from app.rag.embedder import Embedder
 from app.config import get_settings
@@ -49,10 +50,11 @@ class Retriever:
         doc_types: Optional[List[str]] = None,
         company: Optional[str] = None,
         top_k: Optional[int] = None,
+        user_role: str = "advisor",
     ) -> List[RetrievedChunk]:
         """
         Retrieve relevant chunks for a query.
-        
+
         Args:
             db: Database session
             query: User query
@@ -61,17 +63,16 @@ class Retriever:
             doc_types: Optional filter by document types (edgar, pdf, etc.)
             company: Optional filter by company name
             top_k: Override default top_k
-        
+            user_role: Role of authenticated user — restricts sensitivity levels
+
         Returns:
-            List of RetrievedChunk objects sorted by relevance
+            List of RetrievedChunk objects sorted by relevance.
+            Only approved documents within the user's sensitivity access are returned.
         """
         k = top_k or self.top_k
-        
-        # Generate query embedding
         query_embedding = await self.embedder.embed_query(query)
-        
-        # Vector similarity search with filters
-        results = await self._vector_search(
+
+        return await self._vector_search(
             db=db,
             query_embedding=query_embedding,
             tenant_id=tenant_id,
@@ -79,9 +80,8 @@ class Retriever:
             doc_types=doc_types,
             company=company,
             top_k=k,
+            user_role=user_role,
         )
-        
-        return results
     
     async def _vector_search(
         self,
@@ -92,16 +92,20 @@ class Retriever:
         doc_types: Optional[List[str]],
         company: Optional[str],
         top_k: int,
+        user_role: str = "advisor",
     ) -> List[RetrievedChunk]:
-        """Perform vector similarity search with pgvector."""
-        
-        # Build the query with cosine similarity
-        # pgvector uses <=> for cosine distance (1 - similarity)
+        """Perform vector similarity search with pgvector.
+
+        Only returns chunks from documents that are:
+          - approved (is_approved = true)
+          - within the sensitivity levels permitted for user_role
+          - not past their expiry date
+        """
         embedding_str = f"[{','.join(map(str, query_embedding))}]"
-        
-        # Base query with security filters
+        allowed_sensitivity = list(ROLE_SENSITIVITY_ACCESS.get(user_role, frozenset({"public", "internal"})))
+
         query = f"""
-            SELECT 
+            SELECT
                 c.id,
                 c.document_id,
                 c.content,
@@ -112,24 +116,28 @@ class Retriever:
             FROM chunks c
             JOIN documents d ON c.document_id = d.id
             WHERE c.tenant_id = :tenant_id
+              AND d.is_approved = true
+              AND d.sensitivity_level = ANY(:allowed_sensitivity)
+              AND (d.expires_at IS NULL OR d.expires_at > NOW())
         """
-        
-        params: Dict[str, Any] = {"tenant_id": str(tenant_id)}
-        
-        # Add optional filters
+
+        params: Dict[str, Any] = {
+            "tenant_id": str(tenant_id),
+            "allowed_sensitivity": allowed_sensitivity,
+        }
+
         if client_id:
             query += " AND c.client_id = :client_id"
             params["client_id"] = str(client_id)
-        
+
         if doc_types:
             query += " AND d.source_type = ANY(:doc_types)"
             params["doc_types"] = doc_types
-        
+
         if company:
             query += " AND d.company_name ILIKE :company"
             params["company"] = f"%{company}%"
-        
-        # Order by similarity and limit
+
         query += f"""
             ORDER BY c.embedding <=> '{embedding_str}'::vector
             LIMIT :top_k
@@ -209,7 +217,6 @@ class Retriever:
                 merged.append(k_chunk)
                 seen_ids.add(k_chunk.id)
         
-        # Add remaining from longer list
         remaining_vector = [c for c in vector_results if c.id not in seen_ids]
         remaining_keyword = [c for c in keyword_results if c.id not in seen_ids]
         

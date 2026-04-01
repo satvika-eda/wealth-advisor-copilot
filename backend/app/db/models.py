@@ -22,7 +22,6 @@ class Tenant(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     
-    # Relationships
     users: Mapped[List["User"]] = relationship("User", back_populates="tenant")
     documents: Mapped[List["Document"]] = relationship("Document", back_populates="tenant")
     conversations: Mapped[List["Conversation"]] = relationship("Conversation", back_populates="tenant")
@@ -37,11 +36,10 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[Optional[str]] = mapped_column(String(255))
-    role: Mapped[str] = mapped_column(String(50), default="advisor")  # advisor, admin, compliance
+    role: Mapped[str] = mapped_column(String(50), default="advisor")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
-    # Relationships
     tenant: Mapped["Tenant"] = relationship("Tenant", back_populates="users")
     conversations: Mapped[List["Conversation"]] = relationship("Conversation", back_populates="user")
 
@@ -52,25 +50,39 @@ class Document(Base):
     
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
-    client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)  # Mock client grouping
+    client_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
     
     title: Mapped[str] = mapped_column(String(500), nullable=False)
-    source_type: Mapped[str] = mapped_column(String(50), nullable=False)  # edgar, pdf, manual, web
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
     source_url: Mapped[Optional[str]] = mapped_column(String(2000))
-    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)  # Dedupe
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     
-    # Metadata
     company_name: Mapped[Optional[str]] = mapped_column(String(255))
     cik: Mapped[Optional[str]] = mapped_column(String(20))  # SEC CIK number
     filing_type: Mapped[Optional[str]] = mapped_column(String(20))  # 10-K, 10-Q, 8-K
     filing_date: Mapped[Optional[datetime]] = mapped_column(DateTime)
     
     doc_metadata: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
-    
+
+    # Ingestion status — updated by the background task
+    ingestion_status: Mapped[str] = mapped_column(String(20), default="pending")
+    # Values: pending → processing → completed | failed
+    ingestion_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    sensitivity_level: Mapped[str] = mapped_column(String(20), default="internal")
+    # Levels: public, internal, confidential, restricted
+    # - public: accessible to all roles
+    # - internal: accessible to advisor, admin, compliance
+    # - confidential: accessible to admin, compliance only
+    # - restricted: compliance only
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Only approved documents are retrievable in RAG queries
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Document retention: null = no expiry; set for auto-expiry enforcement
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships
     tenant: Mapped["Tenant"] = relationship("Tenant", back_populates="documents")
     chunks: Mapped[List["Chunk"]] = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
     
@@ -93,7 +105,6 @@ class Chunk(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     token_count: Mapped[int] = mapped_column(Integer, default=0)
     
-    # Metadata for citations
     chunk_metadata: Mapped[dict] = mapped_column(JSONB, default=dict)
     # Expected metadata fields:
     # - page: int (for PDFs)
@@ -108,7 +119,6 @@ class Chunk(Base):
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
-    # Relationships
     document: Mapped["Document"] = relationship("Document", back_populates="chunks")
     
     __table_args__ = (
@@ -140,7 +150,6 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
-    # Relationships
     tenant: Mapped["Tenant"] = relationship("Tenant", back_populates="conversations")
     user: Mapped["User"] = relationship("User", back_populates="conversations")
     audit_logs: Mapped[List["AuditLog"]] = relationship("AuditLog", back_populates="conversation")
@@ -155,28 +164,23 @@ class AuditLog(Base):
     
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     conversation_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("conversations.id"), nullable=False, index=True)
-    
-    # Query details
+    user_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+
     user_query: Mapped[str] = mapped_column(Text, nullable=False)
-    workflow: Mapped[str] = mapped_column(String(50), nullable=False)  # qa, summary, risk, email
+    workflow: Mapped[str] = mapped_column(String(50), nullable=False)
     
-    # Retrieval tracking
     retrieved_chunk_ids: Mapped[List[uuid.UUID]] = mapped_column(ARRAY(UUID(as_uuid=True)), default=list)
     retrieval_scores: Mapped[dict] = mapped_column(JSONB, default=dict)
     # Format: {"chunk_id": {"vector_score": 0.85, "rerank_score": 0.92}}
     
-    # Generation details
     model_name: Mapped[str] = mapped_column(String(100), nullable=False)
     response_text: Mapped[str] = mapped_column(Text, nullable=False)
     
-    # Citations for verification
     citations: Mapped[dict] = mapped_column(JSONB, default=dict)
     # Format: [{"chunk_id": "...", "doc_title": "...", "section": "...", "quote": "..."}]
     
-    # Performance
     latency_ms: Mapped[int] = mapped_column(Integer, default=0)
     
-    # Compliance flags
     flags: Mapped[dict] = mapped_column(JSONB, default=dict)
     # Possible flags:
     # - low_evidence: bool (fewer than 3 supporting chunks)
@@ -186,14 +190,19 @@ class AuditLog(Base):
     # - confidence: str (high/medium/low)
     
     confidence_level: Mapped[str] = mapped_column(String(20), default="medium")  # high, medium, low
-    
+
+    # Human review path: advisor/compliance can flag any response for human review
+    flagged_for_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
-    # Relationships
     conversation: Mapped["Conversation"] = relationship("Conversation", back_populates="audit_logs")
-    
+    user: Mapped[Optional["User"]] = relationship("User")
+
     __table_args__ = (
         Index("idx_audit_logs_conversation", "conversation_id"),
+        Index("idx_audit_logs_user", "user_id"),
         Index("idx_audit_logs_workflow", "workflow"),
         Index("idx_audit_logs_created", "created_at"),
         Index("idx_audit_logs_flags", "flags", postgresql_using="gin"),
