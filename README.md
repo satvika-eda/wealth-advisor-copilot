@@ -88,16 +88,13 @@ frontend/
     context/     AuthContext, axios interceptors
 ```
 
-## Why security and data governance matter here
+## Security and data governance
 
-Wealth advisors handle material non-public information, client portfolios, and regulatory filings. An AI assistant in this context has to meet a higher bar than a general-purpose chatbot.
+Wealth advisors work with sensitive regulatory filings and client data — this shapes several design decisions:
 
-**Grounded responses only.** The LLM is never asked to answer from memory. Every response is generated strictly from retrieved document chunks. If the retrieval pipeline doesn't find sufficient evidence, the system refuses to answer rather than hallucinate. This is enforced at the Evidence Check node — not as a prompt suggestion, but as a hard gate in the workflow.
-
-**Data governance by design.** Documents are tagged with sensitivity levels. The Policy Check node enforces role-based access before retrieval even runs — an advisor role cannot retrieve compliance-restricted documents regardless of how the question is phrased. Every query and response is written to an audit log, giving compliance teams a complete record of what was asked, what was retrieved, and what was said.
-
-**Multi-tenant isolation.** Each organization's documents, users, and conversations are scoped to a tenant. There is no cross-tenant data access — enforced at the database query level, not the application layer.
-
-**Prompt injection protection.** User input is validated against known injection patterns before it reaches the LLM. This prevents adversarial inputs from hijacking the system prompt or extracting document content outside the intended workflow.
-
-**Encryption at rest.** Audit log entries (which contain user queries and model responses) can be encrypted at the field level using Fernet symmetric encryption, so sensitive conversation content is protected even if the database is compromised.
+- **Grounded responses** — the LLM only sees retrieved document chunks. If evidence is insufficient, the system refuses rather than guesses. Enforced as a hard gate in the workflow, not a prompt instruction.
+- **Policy check before retrieval** — role-based access (advisor / compliance / admin) is enforced before any document is retrieved. Sensitive documents can't be reached by lower-privileged roles regardless of how a question is phrased.
+- **Audit log** — every query and response is persisted, giving compliance teams a full record of what was asked and answered.
+- **Multi-tenant isolation** — data is scoped per organization at the database query level.
+- **Prompt injection blocking** — user input is validated against injection patterns before reaching the LLM.
+- **Field-level encryption** — audit log entries can be encrypted at rest with Fernet.
